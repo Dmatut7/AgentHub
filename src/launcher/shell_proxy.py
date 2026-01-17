@@ -67,8 +67,26 @@ def fetch_inbox(agent_id):
         return []
 
 
+def send_ack(agent_id, message_id, status="accepted"):
+    """发送 ACK 给 Router，确认消息已处理，防止重试投递。"""
+    url = f"{ROUTER_URL}/message"
+    payload = json.dumps({
+        "type": "ack",
+        "ack_stage": status,
+        "corr_id": message_id,
+        "from": agent_id
+    }).encode('utf-8')
+    try:
+        req = Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        urlopen(req, timeout=5)
+        return True
+    except:
+        return False
+
+
+
 def format_message(msg, role):
-    """Format message in a clear, concise way for Codex to understand."""
+    """Format message with reply instructions."""
     sender = msg.get("from", "?")
     msg_id = msg.get("id", "")
     body = msg.get("body", "")
@@ -84,11 +102,36 @@ def format_message(msg, role):
     else:
         content = str(body)
     
-    # 简短的消息 ID（只取最后8位）
-    short_id = msg_id[-20:] if len(msg_id) > 20 else msg_id
+    # 判断是否是确认类消息（不需要回复）
+    confirm_keywords = ["收到", "等待", "待命", "已就绪", "继续等待", "请等待", "好的", "明白"]
+    is_confirm_msg = any(kw in content for kw in confirm_keywords) and len(content) < 100
     
-    # 清晰简洁的格式
-    return f"[{sender}] {content}"
+    # 构造回复命令示例
+    reply_cmd = f"python3 $TEAM_TOOL say --from {role} --to {sender} --text \"你的回复\""
+    
+    if is_confirm_msg:
+        # 确认类消息：不显示回复提示
+        return f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+来自 [{sender}] 的消息：
+{content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        # 需要处理的消息：只提醒命令，不强制回复
+        return f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+来自 [{sender}] 的消息：
+{content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+回复命令备忘：{reply_cmd}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+
+
+
+
+
 
 
 
@@ -162,7 +205,7 @@ def message_fetcher(state, agent_id, role, stop_event):
         time.sleep(POLL_INTERVAL)
 
 
-def message_processor(interceptor, state, role, stop_event):
+def message_processor(interceptor, state, role, agent_id, stop_event):
     """Thread 2: Process messages from queue one at a time."""
     while not stop_event.is_set():
         try:
@@ -173,6 +216,7 @@ def message_processor(interceptor, state, role, stop_event):
                 time.sleep(1)
                 continue
             
+            msg_id = msg.get("id", "")
             state.processing = True
             
             # 等待 Codex 空闲
@@ -190,6 +234,11 @@ def message_processor(interceptor, state, role, stop_event):
             print(f"[Proxy] 注入消息...")
             interceptor.write_to_agent(prompt)
             
+            # 发送 ACK 给 Router，防止重试
+            if msg_id:
+                send_ack(agent_id, msg_id, "accepted")
+                print(f"[Proxy] 已发送 ACK")
+            
             # 冷却时间
             print(f"[Proxy] 等待处理完成 ({PROCESS_COOLDOWN}秒)...")
             time.sleep(PROCESS_COOLDOWN)
@@ -200,6 +249,7 @@ def message_processor(interceptor, state, role, stop_event):
         except Exception as e:
             state.processing = False
             time.sleep(1)
+
 
 
 def main():
@@ -237,8 +287,9 @@ def main():
         t1.start()
         
         # Thread 2: Process messages (one at a time)
-        t2 = threading.Thread(target=message_processor, args=(interceptor, state, role, stop_event), daemon=True)
+        t2 = threading.Thread(target=message_processor, args=(interceptor, state, role, agent_id, stop_event), daemon=True)
         t2.start()
+
 
         def resize():
             try:

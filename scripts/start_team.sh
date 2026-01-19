@@ -76,6 +76,37 @@ get_session_info() {
     echo "Epoch: $EPOCH"
 }
 
+# 初始化标准文档（如果不存在）
+init_docs() {
+    TEMPLATE_DIR="${ROOT_DIR}/aidoc/docs"
+    TARGET_DIR="${WORKSPACE}/docs"
+    
+    if [ -d "$TARGET_DIR" ]; then
+        echo "✓ docs/ 目录已存在，跳过初始化"
+        return 0
+    fi
+    
+    if [ ! -d "$TEMPLATE_DIR" ]; then
+        echo "⚠ 模板目录不存在: $TEMPLATE_DIR"
+        return 0
+    fi
+    
+    echo "⏳ 初始化标准文档..."
+    
+    # 复制模板
+    cp -r "$TEMPLATE_DIR" "$TARGET_DIR"
+    
+    # 替换路径占位符
+    find "$TARGET_DIR" -name "*.md" -exec sed -i '' "s|<PROJECT_ROOT>|${WORKSPACE}|g" {} \;
+    
+    echo "✓ 已生成标准文档到 ${TARGET_DIR}"
+    echo "  - tech/tech-spec.md"
+    echo "  - project/dev-master.md"
+    echo "  - project/evaluation.md"
+    echo "  - tasks/task-A.md ~ task-D.md"
+}
+
+
 # 启动窗口
 start_windows() {
     echo ""
@@ -99,6 +130,8 @@ main() {
     start_router
     echo ""
     get_session_info
+    echo ""
+    init_docs
     start_windows
     
     echo ""

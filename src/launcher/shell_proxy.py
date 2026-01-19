@@ -14,11 +14,10 @@ from urllib.request import Request, urlopen
 
 # Configuration
 ROUTER_URL = os.environ.get("ROUTER_URL", "http://127.0.0.1:8765")
-POLL_INTERVAL = 5.0
+POLL_INTERVAL = 3.0  # 更快轮询
 HEARTBEAT_INTERVAL = 30.0
 ROUTER_WAIT_TIMEOUT = 30
-IDLE_THRESHOLD = 5.0  # 5秒无输出视为空闲
-PROCESS_COOLDOWN = 15.0  # 处理完一条消息后等15秒再处理下一条
+# 不再需要等待空闲和冷却时间，因为 Codex 支持 mid-turn 消息
 
 
 def wait_for_router(timeout=ROUTER_WAIT_TIMEOUT):
@@ -137,18 +136,12 @@ def format_message(msg, role):
 
 class ProxyState:
     def __init__(self):
-        self.last_output_time = time.time()
         self.lock = threading.Lock()
         self.message_queue = Queue()  # 消息队列
-        self.processing = False  # 是否正在处理消息
     
     def update_output_time(self):
-        with self.lock:
-            self.last_output_time = time.time()
-    
-    def is_idle(self):
-        with self.lock:
-            return time.time() - self.last_output_time > IDLE_THRESHOLD
+        # 保留接口，但不再用于等待判断
+        pass
 
 
 class OutputInterceptor:
@@ -188,17 +181,16 @@ def message_fetcher(state, agent_id, role, stop_event):
                 send_heartbeat(agent_id)
                 last_heartbeat = now
             
-            # 只有在没有正在处理的消息时才获取新消息
-            if not state.processing and state.message_queue.empty():
-                messages = fetch_inbox(agent_id)
-                for msg in messages:
-                    msg_id = msg.get("id")
-                    if msg_id and msg_id not in seen_ids:
-                        sender = msg.get("from", "")
-                        if sender != role:  # 忽略自己的消息
-                            seen_ids.add(msg_id)
-                            state.message_queue.put(msg)
-                            print(f"[Proxy] 收到来自 {sender} 的消息，已加入队列")
+            # 直接获取消息，不再判断是否空闲
+            messages = fetch_inbox(agent_id)
+            for msg in messages:
+                msg_id = msg.get("id")
+                if msg_id and msg_id not in seen_ids:
+                    sender = msg.get("from", "")
+                    if sender != role:  # 忽略自己的消息
+                        seen_ids.add(msg_id)
+                        state.message_queue.put(msg)
+                        print(f"[Proxy] 收到来自 {sender} 的消息")
         except:
             pass
         
@@ -206,48 +198,34 @@ def message_fetcher(state, agent_id, role, stop_event):
 
 
 def message_processor(interceptor, state, role, agent_id, stop_event):
-    """Thread 2: Process messages from queue one at a time."""
+    """Thread 2: Process messages - 直接发送，不等待空闲"""
     while not stop_event.is_set():
         try:
-            # 从队列获取消息（非阻塞）
+            # 从队列获取消息（阻塞等待，超时1秒）
             try:
-                msg = state.message_queue.get_nowait()
+                msg = state.message_queue.get(timeout=1)
             except Empty:
-                time.sleep(1)
                 continue
             
             msg_id = msg.get("id", "")
-            state.processing = True
+            sender = msg.get("from", "?")
             
-            # 等待 Codex 空闲
-            print(f"[Proxy] 等待空闲...")
-            wait_count = 0
-            while not state.is_idle() and wait_count < 60:
-                time.sleep(1)
-                wait_count += 1
-            
-            # 额外等待确保稳定
-            time.sleep(2)
-            
-            # 注入消息
+            # 直接注入消息（Codex 支持 mid-turn）
             prompt = format_message(msg, role)
-            print(f"[Proxy] 注入消息...")
+            print(f"[Proxy] 发送消息 (来自 {sender})")
             interceptor.write_to_agent(prompt)
             
-            # 发送 ACK 给 Router，防止重试
+            # 发送 ACK 给 Router
             if msg_id:
                 send_ack(agent_id, msg_id, "accepted")
-                print(f"[Proxy] 已发送 ACK")
             
-            # 冷却时间
-            print(f"[Proxy] 等待处理完成 ({PROCESS_COOLDOWN}秒)...")
-            time.sleep(PROCESS_COOLDOWN)
+            # 短暂等待，避免消息堆积太快
+            time.sleep(0.5)
             
-            state.processing = False
             state.message_queue.task_done()
             
         except Exception as e:
-            state.processing = False
+            print(f"[Proxy] 错误: {e}")
             time.sleep(1)
 
 

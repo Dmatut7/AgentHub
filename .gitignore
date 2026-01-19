@@ -1,1 +1,7 @@
+# AgentHub 运行时文件
+.codex_team/
+
+# 其他临时文件
+*.pyc
+__pycache__/
 .DS_Store

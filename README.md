@@ -14,7 +14,7 @@
 [![GitHub issues](https://img.shields.io/github/issues/Dmatut7/AgentHub)](https://github.com/Dmatut7/AgentHub/issues)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Dmatut7/AgentHub/pulls)
 
-[Features](#-features) | [Quick Start](#-quick-start) | [Architecture](#-architecture) | [Examples](#-use-cases) | [Contributing](#-contributing)
+[Features](#features) | [Quick Start](#quick-start) | [Architecture](#architecture) | [Examples](#use-cases) | [Contributing](#contributing)
 
 </div>
 

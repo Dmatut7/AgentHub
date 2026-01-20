@@ -78,11 +78,11 @@ get_session_info() {
 
 # 初始化标准文档（如果不存在）
 init_docs() {
-    TEMPLATE_DIR="${ROOT_DIR}/aidoc/docs"
-    TARGET_DIR="${WORKSPACE}/docs"
+    TEMPLATE_DIR="${ROOT_DIR}/doc"
+    TARGET_DIR="${WORKSPACE}/doc"
     
     if [ -d "$TARGET_DIR" ]; then
-        echo "✓ docs/ 目录已存在，跳过初始化"
+        echo "✓ doc/ 目录已存在，跳过初始化"
         return 0
     fi
     
@@ -100,10 +100,10 @@ init_docs() {
     find "$TARGET_DIR" -name "*.md" -exec sed -i '' "s|<PROJECT_ROOT>|${WORKSPACE}|g" {} \;
     
     echo "✓ 已生成标准文档到 ${TARGET_DIR}"
-    echo "  - tech/tech-spec.md"
-    echo "  - project/dev-master.md"
-    echo "  - project/evaluation.md"
-    echo "  - tasks/task-A.md ~ task-D.md"
+    echo "  - 00-说明与索引.md"
+    echo "  - 15-需求规格与验收指标模板.md"
+    echo "  - 14-执行计划模板.md"
+    echo "  - 04-窗口任务清单模板.md"
 }
 
 

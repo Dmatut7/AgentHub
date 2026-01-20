@@ -2,6 +2,8 @@
 
 <div align="center">
 
+<img src="images/8beddced-3fd2-4756-b0db-b090c8648092.png" alt="AgentHub Workflow" width="800">
+
 > **Orchestrate multiple AI Agents to work together like a human team**
 > Complete complex software development tasks through reliable messaging protocols
 
